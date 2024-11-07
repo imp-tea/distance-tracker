@@ -57,10 +57,8 @@ async function checkAndRequestCameraPermission() {
     }
 }
 
-// Call the permission check function
-checkAndRequestCameraPermission();
-
 document.addEventListener('DOMContentLoaded', function() {
+    checkAndRequestCameraPermission();
     // Wait for OpenCV.js to load
     cv['onRuntimeInitialized'] = () => {
         const video = document.getElementById('videoElement');
