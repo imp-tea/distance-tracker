@@ -49,6 +49,7 @@ async function checkAndRequestCameraPermission() {
             .then(stream => {
                 const video = document.getElementById('videoElement');
                 video.srcObject = stream;
+                console.log("Video feed successfully accessed"); // Add this to confirm
             })
             .catch(error => {
                 console.error("Error accessing the webcam: ", error);
@@ -77,6 +78,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const mask = new cv.Mat();
 
             function processFrame() {
+                console.log("Processing frame..."); // Add this
                 try {
                     cap.read(frame);
                     cv.cvtColor(frame, hsv, cv.COLOR_RGBA2RGB);
