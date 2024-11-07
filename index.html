@@ -34,6 +34,20 @@
 
 <!-- Main JavaScript for the tracker functionality -->
 <script>
+// Poll every 100ms to check if OpenCV is loaded, instead of relying solely on cv['onRuntimeInitialized']
+function checkOpenCVReady() {
+    if (cv && cv.Mat) {
+        console.log("OpenCV.js is ready (alternative check).");
+        openCVReady = true;
+        if (videoReady) {
+            startProcessing();
+        }
+    } else {
+        setTimeout(checkOpenCVReady, 100); // Retry every 100ms
+    }
+}
+  
+    
 document.addEventListener('DOMContentLoaded', function() {
     console.log("DOM Content loaded...");
     const video = document.getElementById('videoElement');
@@ -48,24 +62,7 @@ document.addEventListener('DOMContentLoaded', function() {
         console.error("Error accessing the webcam: ", error);
     });
 
-    // Flags to check if both video and OpenCV are ready
-    let videoReady = false;
-    let openCVReady = false;
-
-    // Wait until OpenCV.js is fully loaded
-    cv['onRuntimeInitialized'] = () => {
-        console.log("OpenCV.js is ready.");
-        openCVReady = true;
-        if (videoReady) {
-            startProcessing();
-        }
-    };
-
-    // Wait for the video to be fully ready
-    video.addEventListener('loadedmetadata', () => {
-        video.play(); // Ensure the video starts playing
-    });
-
+    // Wait for video to be ready
     video.addEventListener('canplay', () => {
         console.log("Video is ready to play");
         videoReady = true;
@@ -73,6 +70,9 @@ document.addEventListener('DOMContentLoaded', function() {
             startProcessing();
         }
     });
+
+    // Check OpenCV initialization using the alternative approach
+    checkOpenCVReady();
 });
 
 function startProcessing() {
