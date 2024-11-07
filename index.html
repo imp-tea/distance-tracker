@@ -59,15 +59,20 @@ async function checkAndRequestCameraPermission() {
     }
 }
 document.addEventListener('DOMContentLoaded', function() {
+    console.log("DOM Content loaded...");
     checkAndRequestCameraPermission();
+    
+    
     // Wait until OpenCV.js is fully loaded
     cv['onRuntimeInitialized'] = () => {
+        console.log("Runtime initialized...");
         const video = document.getElementById('videoElement');
         const canvas = document.getElementById('canvasOutput');
         const ctx = canvas.getContext('2d');
 
         // Access webcam
         navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+            console.log("Stream loaded...");
             video.srcObject = stream;
         });
 
