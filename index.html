@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Green Square Distance Tracker</title>
+    <style>
+        /* Basic CSS to center and size video and canvas elements */
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+        }
+        video, canvas {
+            width: 640px;
+            height: 480px;
+            border: 1px solid #333;
+        }
+    </style>
+</head>
+<body>
+
+<h2>Neon Green Square Distance Tracker</h2>
+<!-- Video element to capture from webcam -->
+<video id="videoElement" autoplay playsinline></video>
+
+<!-- Canvas element to show the processed video with distance overlay -->
+<canvas id="canvasOutput"></canvas>
+
+<!-- Load OpenCV.js library from CDN -->
+<script async src="https://docs.opencv.org/3.4.0/opencv.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Wait for OpenCV.js to load
+    cv['onRuntimeInitialized'] = () => {
+        const video = document.getElementById('videoElement');
+        const canvas = document.getElementById('canvasOutput');
+        const ctx = canvas.getContext('2d');
+
+        // Access webcam
+        navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+            video.srcObject = stream;
+        });
+
+        video.addEventListener('play', () => {
+            const cap = new cv.VideoCapture(video);
+            const frame = new cv.Mat(video.height, video.width, cv.CV_8UC4);
+            const hsv = new cv.Mat();
+            const mask = new cv.Mat();
+
+            function processFrame() {
+                cap.read(frame);
+                cv.cvtColor(frame, hsv, cv.COLOR_RGBA2RGB);
+                cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
+
+                // Define HSV range for neon green
+                let lower = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [35, 100, 100, 0]);
+                let upper = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [85, 255, 255, 255]);
+                cv.inRange(hsv, lower, upper, mask);
+
+                // Find contours
+                let contours = new cv.MatVector();
+                let hierarchy = new cv.Mat();
+                cv.findContours(mask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+                for (let i = 0; i < contours.size(); i++) {
+                    let cnt = contours.get(i);
+                    let rect = cv.boundingRect(cnt);
+
+                    // Estimate distance based on bounding box width
+                    const knownDistance = 24; // Calibrated distance in inches
+                    const realWidth = 6; // Real width of object in inches
+                    const observedWidth = rect.width;
+                    const distance = (knownDistance * realWidth) / observedWidth;
+
+                    // Draw bounding box and distance text on the frame
+                    cv.rectangle(frame, new cv.Point(rect.x, rect.y), new cv.Point(rect.x + rect.width, rect.y + rect.height), [0, 255, 0, 255], 2);
+                    cv.putText(frame, `${distance.toFixed(2)} inches`, new cv.Point(rect.x, rect.y - 10), cv.FONT_HERSHEY_SIMPLEX, 0.6, [0, 255, 0, 255]);
+                }
+
+                // Display result on the canvas
+                cv.imshow('canvasOutput', frame);
+
+                // Clean up
+                contours.delete();
+                hierarchy.delete();
+
+                // Repeat the process
+                requestAnimationFrame(processFrame);
+            }
+            processFrame();
+        });
+    };
+});
+</script>
+</body>
+</html>
