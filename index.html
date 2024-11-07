@@ -34,6 +34,32 @@
 <!-- Load OpenCV.js library from CDN -->
 <script async src="https://docs.opencv.org/3.4.0/opencv.js"></script>
 <script>
+async function checkAndRequestCameraPermission() {
+    try {
+        let permissionStatus = await navigator.permissions.query({ name: 'camera' });
+        
+        if (permissionStatus.state === 'denied') {
+            alert("Camera access has been denied. Please enable it in your browser settings.");
+            return;
+        }
+
+        // Try to access the webcam if permission isn't denied
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                const video = document.getElementById('videoElement');
+                video.srcObject = stream;
+            })
+            .catch(error => {
+                console.error("Error accessing the webcam: ", error);
+            });
+    } catch (error) {
+        console.error("Error checking camera permissions: ", error);
+    }
+}
+
+// Call the permission check function
+checkAndRequestCameraPermission();
+
 document.addEventListener('DOMContentLoaded', function() {
     // Wait for OpenCV.js to load
     cv['onRuntimeInitialized'] = () => {
