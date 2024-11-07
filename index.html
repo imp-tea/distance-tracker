@@ -34,7 +34,11 @@
 
 <!-- Main JavaScript for the tracker functionality -->
 <script>
-// Poll every 100ms to check if OpenCV is loaded, instead of relying solely on cv['onRuntimeInitialized']
+// Global variables to track readiness
+let videoReady = false;
+let openCVReady = false;
+
+// Poll every 100ms to check if OpenCV is loaded
 function checkOpenCVReady() {
     if (cv && cv.Mat) {
         console.log("OpenCV.js is ready (alternative check).");
@@ -46,8 +50,8 @@ function checkOpenCVReady() {
         setTimeout(checkOpenCVReady, 100); // Retry every 100ms
     }
 }
-  
-    
+
+// DOMContentLoaded event
 document.addEventListener('DOMContentLoaded', function() {
     console.log("DOM Content loaded...");
     const video = document.getElementById('videoElement');
@@ -79,7 +83,8 @@ function startProcessing() {
     const video = document.getElementById('videoElement');
     const canvasOutput = document.getElementById('canvasOutput');
     const canvasFrame = document.createElement('canvas');
-    const ctx = canvasFrame.getContext('2d');
+    // Using willReadFrequently attribute for better performance
+    const ctx = canvasFrame.getContext('2d', { willReadFrequently: true });
 
     // Set canvas sizes to match video dimensions
     const videoWidth = video.videoWidth;
