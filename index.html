@@ -2,62 +2,97 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Color Distance Tracker</title>
+    <title>Huddleston's Distance Tracker</title>
     <style>
-        /* Basic CSS to center and size video and canvas elements */
         body {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
             font-family: Arial, sans-serif;
+            margin: 0;
         }
-        video, canvas {
-            width: 640px;
-            height: 480px;
+        .container {
+            display: flex;
+            height: 100vh;
+        }
+        .left-side, .right-side {
+            flex: 1;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .left-side {
+            border-right: 1px solid #ccc;
+        }
+        .controls, .calibration-controls {
+            margin-bottom: 10px;
+        }
+        .controls label, .calibration-controls label {
+            margin-right: 5px;
+        }
+        video, canvas#canvasOutput {
+            width: 320px;
+            height: 240px;
             border: 1px solid #333;
         }
         /* Hide the video element */
         #videoElement {
             display: none;
         }
-        .controls {
-            margin-bottom: 10px;
+        /* Style for right-side elements */
+        .graph-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
         }
-        .calibration-controls {
-            margin-bottom: 10px;
+        #distanceChart {
+            width: 100%;
+            max-height: 300px;
         }
-        .calibration-controls label, .calibration-controls input {
+        .graph-buttons {
+            margin-top: 10px;
+        }
+        .graph-buttons button {
             margin-right: 5px;
         }
     </style>
     <!-- Load OpenCV.js from CDN with defer attribute -->
     <script defer src="https://docs.opencv.org/3.4.0/opencv.js"></script>
+    <!-- Load Chart.js from CDN -->
+    <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 
-<h2>Color Distance Tracker</h2>
+<h2 style="text-align:center;">Color Distance Tracker</h2>
 
-<div class="controls">
-    <label for="colorPicker">Select Color:</label>
-    <input type="color" id="colorPicker" name="colorPicker" value="#7ABF36">
+<div class="container">
+    <div class="left-side">
+        <div class="controls">
+            <label for="colorPicker">Select Color:</label>
+            <input type="color" id="colorPicker" name="colorPicker" value="#7ABF36">
+        </div>
+
+        <div class="calibration-controls">
+            <label for="distanceInput">Distance from Camera (inches):</label>
+            <input type="number" id="distanceInput" name="distanceInput" value="24">
+            <label for="widthInput">Width of Object (inches):</label>
+            <input type="number" id="widthInput" name="widthInput" value="6">
+            <button id="calibrateButton">Calibrate!</button>
+        </div>
+
+        <!-- Video element to capture from webcam -->
+        <video id="videoElement" autoplay playsinline></video>
+
+        <!-- Canvas element to show the processed video with distance overlay -->
+        <canvas id="canvasOutput"></canvas>
+    </div>
+
+    <div class="right-side">
+        <div class="graph-container">
+            <canvas id="distanceChart"></canvas>
+            <div class="graph-buttons">
+                <button id="beginGraphingButton">Begin Graphing</button>
+                <button id="clearGraphButton">Clear Graph</button>
+            </div>
+        </div>
+    </div>
 </div>
-
-<div class="calibration-controls">
-    <label for="distanceInput">Distance from Camera (inches):</label>
-    <input type="number" id="distanceInput" name="distanceInput" value="24">
-    <label for="widthInput">Width of Object (inches):</label>
-    <input type="number" id="widthInput" name="widthInput" value="6">
-    <button id="calibrateButton">Calibrate!</button>
-</div>
-
-<!-- Video element to capture from webcam -->
-<video id="videoElement" autoplay playsinline></video>
-
-<!-- Canvas element to show the processed video with distance overlay -->
-<canvas id="canvasOutput"></canvas>
 
 <!-- Main JavaScript for the tracker functionality -->
 <script>
@@ -72,6 +107,13 @@
     let knownDistance = 24; // default value in inches
     let realWidth = 6; // default value in inches
     let focalLength = null; // will be calculated during calibration
+
+    // Graphing variables
+    let chart; // Chart.js chart instance
+    let graphing = false; // Flag to indicate if graphing is active
+    let graphData = []; // Array to store distance data
+    let graphLabels = []; // Array to store time labels
+    let startTime = null; // Variable to track the start time of graphing
 
     // Poll every 100ms to check if OpenCV is loaded
     function checkOpenCVReady() {
@@ -92,6 +134,8 @@
         const video = document.getElementById('videoElement');
         const colorPicker = document.getElementById('colorPicker');
         const calibrateButton = document.getElementById('calibrateButton');
+        const beginGraphingButton = document.getElementById('beginGraphingButton');
+        const clearGraphButton = document.getElementById('clearGraphButton');
 
         // Access webcam
         navigator.mediaDevices.getUserMedia({ video: true })
@@ -121,8 +165,13 @@
         // Add event listener to calibrate button
         calibrateButton.addEventListener('click', calibrateCamera);
 
-        // Initialize color range
+        // Add event listeners for graphing buttons
+        beginGraphingButton.addEventListener('click', beginGraphing);
+        clearGraphButton.addEventListener('click', clearGraph);
+
+        // Initialize color range and chart
         updateColorRange();
+        initializeChart();
     });
 
     function updateColorRange() {
@@ -255,17 +304,25 @@
                     if (focalLength !== null) {
                         const observedWidth = rect.width;
                         distance = (realWidth * focalLength) / observedWidth;
-                        distance = distance.toFixed(2) + " inches";
+                        distance = parseFloat(distance.toFixed(2)); // in inches
                     } else {
                         // If not calibrated, display message
-                        distance = "Not calibrated";
+                        distance = null;
                     }
 
                     // Draw bounding box and distance text on the frame
                     cv.rectangle(src, new cv.Point(rect.x, rect.y), new cv.Point(rect.x + rect.width, rect.y + rect.height), [0, 255, 0, 255], 2);
-                    cv.putText(src, distance, new cv.Point(rect.x, rect.y - 10), cv.FONT_HERSHEY_SIMPLEX, 0.6, [0, 255, 0, 255]);
+                    cv.putText(src, distance !== null ? distance + " inches" : "Not calibrated", new cv.Point(rect.x, rect.y - 10), cv.FONT_HERSHEY_SIMPLEX, 0.6, [0, 255, 0, 255]);
 
                     maxContour.delete();
+
+                    // If graphing is active and distance is valid
+                    if (graphing && distance !== null) {
+                        let currentTime = (Date.now() - startTime) / 1000; // in seconds
+                        graphLabels.push(parseFloat(currentTime.toFixed(2)));
+                        graphData.push(distance);
+                        chart.update();
+                    }
                 }
 
                 // Show the processed frame
@@ -371,6 +428,77 @@
         hierarchy.delete();
         lower.delete();
         upper.delete();
+    }
+
+    function initializeChart() {
+        const ctx = document.getElementById('distanceChart').getContext('2d');
+        chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [], // Time labels
+                datasets: [{
+                    label: 'Distance (inches)',
+                    data: [],
+                    borderColor: 'blue',
+                    fill: false,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Time (seconds)'
+                        },
+                        type: 'linear',
+                        position: 'bottom',
+                        ticks: {
+                            autoSkip: true,
+                            maxTicksLimit: 10
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Distance (inches)'
+                        },
+                        beginAtZero: true,
+                        ticks: {
+                            autoSkip: true,
+                            maxTicksLimit: 10
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function beginGraphing() {
+        if (!graphing) {
+            graphing = true;
+            startTime = Date.now();
+            graphData = [];
+            graphLabels = [];
+            chart.data.labels = graphLabels;
+            chart.data.datasets[0].data = graphData;
+            chart.update();
+            document.getElementById('beginGraphingButton').textContent = 'Stop Graphing';
+        } else {
+            graphing = false;
+            document.getElementById('beginGraphingButton').textContent = 'Begin Graphing';
+        }
+    }
+
+    function clearGraph() {
+        graphing = false;
+        document.getElementById('beginGraphingButton').textContent = 'Begin Graphing';
+        graphData = [];
+        graphLabels = [];
+        chart.data.labels = graphLabels;
+        chart.data.datasets[0].data = graphData;
+        chart.update();
     }
 </script>
 
