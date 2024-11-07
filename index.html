@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Neon Green Square Distance Tracker</title>
+    <title>Color Distance Tracker</title>
     <style>
         /* Basic CSS to center and size video and canvas elements */
         body {
@@ -19,13 +19,26 @@
             height: 480px;
             border: 1px solid #333;
         }
+        /* Hide the video element */
+        #videoElement {
+            display: none;
+        }
+        .controls {
+            margin-bottom: 10px;
+        }
     </style>
     <!-- Load OpenCV.js from CDN with defer attribute -->
     <script defer src="https://docs.opencv.org/3.4.0/opencv.js"></script>
 </head>
 <body>
 
-<h2>Neon Green Square Distance Tracker</h2>
+<h2>Color Distance Tracker</h2>
+
+<div class="controls">
+    <label for="colorPicker">Select Color:</label>
+    <input type="color" id="colorPicker" name="colorPicker" value="#00FF00">
+</div>
+
 <!-- Video element to capture from webcam -->
 <video id="videoElement" autoplay playsinline></video>
 
@@ -38,10 +51,13 @@
 let videoReady = false;
 let openCVReady = false;
 
+let lowerHSV = [40, 150, 150, 0]; // Initial lower HSV range
+let upperHSV = [80, 255, 255, 255]; // Initial upper HSV range
+
 // Poll every 100ms to check if OpenCV is loaded
 function checkOpenCVReady() {
     if (cv && cv.Mat) {
-        console.log("OpenCV.js is ready (alternative check).");
+        console.log("OpenCV.js is ready.");
         openCVReady = true;
         if (videoReady) {
             startProcessing();
@@ -55,6 +71,7 @@ function checkOpenCVReady() {
 document.addEventListener('DOMContentLoaded', function() {
     console.log("DOM Content loaded...");
     const video = document.getElementById('videoElement');
+    const colorPicker = document.getElementById('colorPicker');
 
     // Access webcam
     navigator.mediaDevices.getUserMedia({ video: true })
@@ -75,9 +92,80 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // Check OpenCV initialization using the alternative approach
+    // Check OpenCV initialization
     checkOpenCVReady();
+
+    // Add event listener to color picker
+    colorPicker.addEventListener('input', updateColorRange);
+
+    // Initialize color range
+    updateColorRange();
 });
+
+function updateColorRange() {
+    const colorPicker = document.getElementById('colorPicker');
+    let hexColor = colorPicker.value;
+    let hsvColor = hexToHSV(hexColor);
+    let h = hsvColor[0];
+    let s = hsvColor[1];
+    let v = hsvColor[2];
+
+    // Define ranges
+    let hueRange = 10; // Adjust as needed
+    let satRange = 100; // Adjust as needed
+    let valRange = 100; // Adjust as needed
+
+    let lowerH = Math.max(h - hueRange, 0);
+    let upperH = Math.min(h + hueRange, 179);
+
+    let lowerS = Math.max(s - satRange, 0);
+    let upperS = Math.min(s + satRange, 255);
+
+    let lowerV = Math.max(v - valRange, 0);
+    let upperV = Math.min(v + valRange, 255);
+
+    lowerHSV = [lowerH, lowerS, lowerV, 0];
+    upperHSV = [upperH, upperS, upperV, 255];
+
+    console.log("Lower HSV:", lowerHSV);
+    console.log("Upper HSV:", upperHSV);
+}
+
+function hexToHSV(hex) {
+    // Convert hex to RGB first
+    let r = parseInt(hex.substr(1,2),16);
+    let g = parseInt(hex.substr(3,2),16);
+    let b = parseInt(hex.substr(5,2),16);
+
+    // Convert RGB to HSV
+    let hsv = rgbToHSV(r, g, b);
+    return hsv;
+}
+
+function rgbToHSV(r, g, b) {
+    r /= 255;
+    g /= 255;
+    b /= 255;
+
+    let max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h, s, v = max;
+
+    let d = max - min;
+    s = max == 0 ? 0 : d / max;
+
+    if(max == min){
+        h = 0; // achromatic
+    } else {
+        switch(max){
+            case r: h = ((g - b) / d + (g < b ? 6 : 0)); break;
+            case g: h = ((b - r) / d + 2); break;
+            case b: h = ((r - g) / d + 4); break;
+        }
+        h /= 6;
+    }
+
+    return [h * 179, s * 255, v * 255]; // OpenCV uses H ranges from 0 to 179, S and V from 0 to 255
+}
 
 function startProcessing() {
     const video = document.getElementById('videoElement');
@@ -111,9 +199,9 @@ function startProcessing() {
             cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
             cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
 
-            // Define HSV range for neon green
-            let lower = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [40, 150, 150, 0]);
-            let upper = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [80, 255, 255, 255]);
+            // Create Mats from lowerHSV and upperHSV
+            let lower = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), lowerHSV);
+            let upper = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), upperHSV);
             cv.inRange(hsv, lower, upper, mask);
 
             // Find contours
@@ -121,9 +209,23 @@ function startProcessing() {
             let hierarchy = new cv.Mat();
             cv.findContours(mask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
+            // Find the largest contour
+            let maxArea = 0;
+            let maxContour = null;
             for (let i = 0; i < contours.size(); i++) {
                 let cnt = contours.get(i);
-                let rect = cv.boundingRect(cnt);
+                let area = cv.contourArea(cnt);
+                if (area > maxArea) {
+                    if (maxContour !== null) maxContour.delete(); // delete previous maxContour
+                    maxArea = area;
+                    maxContour = cnt;
+                } else {
+                    cnt.delete(); // delete the contour
+                }
+            }
+
+            if (maxContour != null) {
+                let rect = cv.boundingRect(maxContour);
 
                 // Estimate distance based on bounding box width
                 const knownDistance = 24; // Calibrated distance in inches
@@ -134,6 +236,8 @@ function startProcessing() {
                 // Draw bounding box and distance text on the frame
                 cv.rectangle(src, new cv.Point(rect.x, rect.y), new cv.Point(rect.x + rect.width, rect.y + rect.height), [0, 255, 0, 255], 2);
                 cv.putText(src, `${distance.toFixed(2)} inches`, new cv.Point(rect.x, rect.y - 10), cv.FONT_HERSHEY_SIMPLEX, 0.6, [0, 255, 0, 255]);
+
+                maxContour.delete();
             }
 
             // Show the processed frame
