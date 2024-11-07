@@ -21,6 +21,8 @@
             border: 1px solid #333;
         }
     </style>
+    <!-- Load OpenCV.js from CDN with defer attribute -->
+    <script defer src="https://docs.opencv.org/3.4.0/opencv.js"></script>
 </head>
 <body>
 
@@ -31,8 +33,7 @@
 <!-- Canvas element to show the processed video with distance overlay -->
 <canvas id="canvasOutput"></canvas>
 
-<!-- Load OpenCV.js library from CDN -->
-<script async src="https://docs.opencv.org/3.4.0/opencv.js"></script>
+<!-- Main JavaScript for the tracker functionality -->
 <script>
 async function checkAndRequestCameraPermission() {
     try {
@@ -56,10 +57,9 @@ async function checkAndRequestCameraPermission() {
         console.error("Error checking camera permissions: ", error);
     }
 }
-
 document.addEventListener('DOMContentLoaded', function() {
     checkAndRequestCameraPermission();
-    // Wait for OpenCV.js to load
+    // Wait until OpenCV.js is fully loaded
     cv['onRuntimeInitialized'] = () => {
         const video = document.getElementById('videoElement');
         const canvas = document.getElementById('canvasOutput');
@@ -69,65 +69,66 @@ document.addEventListener('DOMContentLoaded', function() {
         navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
             video.srcObject = stream;
         });
-        // Initialize frame processing
+
         video.addEventListener('play', () => {
             const cap = new cv.VideoCapture(video);
             const frame = new cv.Mat(video.height, video.width, cv.CV_8UC4);
             const hsv = new cv.Mat();
             const mask = new cv.Mat();
-        
+
             function processFrame() {
                 try {
                     cap.read(frame);
                     cv.cvtColor(frame, hsv, cv.COLOR_RGBA2RGB);
                     cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
-        
-                    // Adjusted range for neon green; adjust as needed
+
+                    // Define HSV range for neon green; adjust as needed
                     let lower = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [40, 150, 150, 0]);
                     let upper = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), [80, 255, 255, 255]);
                     cv.inRange(hsv, lower, upper, mask);
-        
+
+                    // Find contours
                     let contours = new cv.MatVector();
                     let hierarchy = new cv.Mat();
                     cv.findContours(mask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-        
-                    // Check if contours are detected
+
                     console.log("Contours found:", contours.size());
                     for (let i = 0; i < contours.size(); i++) {
                         let cnt = contours.get(i);
                         let rect = cv.boundingRect(cnt);
-        
+
                         // Estimate distance based on bounding box width
                         const knownDistance = 24; // Calibrated distance in inches
                         const realWidth = 6; // Real width of object in inches
                         const observedWidth = rect.width;
                         const distance = (knownDistance * realWidth) / observedWidth;
-        
+
                         // Draw bounding box and distance text on the frame
                         cv.rectangle(frame, new cv.Point(rect.x, rect.y), new cv.Point(rect.x + rect.width, rect.y + rect.height), [0, 255, 0, 255], 2);
                         cv.putText(frame, `${distance.toFixed(2)} inches`, new cv.Point(rect.x, rect.y - 10), cv.FONT_HERSHEY_SIMPLEX, 0.6, [0, 255, 0, 255]);
                     }
-        
+
                     // Render frame on the canvas
                     cv.imshow('canvasOutput', frame);
-        
+
                     // Clean up
                     contours.delete();
                     hierarchy.delete();
                     lower.delete();
                     upper.delete();
-        
+
                     // Process the next frame
                     requestAnimationFrame(processFrame);
                 } catch (err) {
                     console.error("Error in processing frame:", err);
                 }
             }
-        
+
             processFrame();
         });
     };
 });
 </script>
+
 </body>
 </html>
