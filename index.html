@@ -100,10 +100,15 @@
         </div>
          <!-- Controls below the graph -->
         <div class="controls">
-            <label for="colorPicker">Select Color:</label>
-            <input type="color" id="colorPicker" name="colorPicker" value="#7ABF36">
-            <label for="sensitivityRange">Sensitivity:</label>
-            <input type="range" id="sensitivityRange" name="sensitivityRange" min="0" max="100" value="50">
+            <label for="colorPicker1">Select Color 1:</label>
+            <input type="color" id="colorPicker1" name="colorPicker1" value="#7ABF36">
+            <label for="sensitivityRange1">Sensitivity:</label>
+            <input type="range" id="sensitivityRange1" name="sensitivityRange1" min="0" max="100" value="50">
+            <br>
+            <label for="colorPicker2">Select Color 2:</label>
+            <input type="color" id="colorPicker2" name="colorPicker2" value="#FF69B4"> <!-- Neon pink -->
+            <label for="sensitivityRange2">Sensitivity:</label>
+            <input type="range" id="sensitivityRange2" name="sensitivityRange2" min="0" max="100" value="50">
         </div>
     </div>
 </div>
@@ -114,8 +119,12 @@
     let videoReady = false;
     let openCVReady = false;
 
-    let lowerHSV = [40, 150, 150, 0]; // Initial lower HSV range
-    let upperHSV = [80, 255, 255, 255]; // Initial upper HSV range
+    // HSV ranges for both colors
+    let lowerHSV1 = [40, 150, 150, 0]; // Initial lower HSV range for color 1
+    let upperHSV1 = [80, 255, 255, 255]; // Initial upper HSV range for color 1
+
+    let lowerHSV2 = [160, 150, 150, 0]; // Initial lower HSV range for color 2
+    let upperHSV2 = [179, 255, 255, 255]; // Initial upper HSV range for color 2
 
     // Calibration variables
     let knownDistance = 24; // default value in inches
@@ -144,8 +153,10 @@
     document.addEventListener('DOMContentLoaded', function() {
         console.log("DOM Content loaded...");
         const video = document.getElementById('videoElement');
-        const colorPicker = document.getElementById('colorPicker');
-        const sensitivityRange = document.getElementById('sensitivityRange');
+        const colorPicker1 = document.getElementById('colorPicker1');
+        const sensitivityRange1 = document.getElementById('sensitivityRange1');
+        const colorPicker2 = document.getElementById('colorPicker2');
+        const sensitivityRange2 = document.getElementById('sensitivityRange2');
         const calibrateButton = document.getElementById('calibrateButton');
         const beginGraphingButton = document.getElementById('beginGraphingButton');
         const clearGraphButton = document.getElementById('clearGraphButton');
@@ -172,11 +183,11 @@
         // Check OpenCV initialization
         checkOpenCVReady();
 
-        // Add event listener to color picker
-        colorPicker.addEventListener('input', updateColorRange);
-
-        // Add event listener to sensitivity slider
-        sensitivityRange.addEventListener('input', updateColorRange);
+        // Add event listeners to color pickers and sensitivity sliders
+        colorPicker1.addEventListener('input', updateColorRange);
+        sensitivityRange1.addEventListener('input', updateColorRange);
+        colorPicker2.addEventListener('input', updateColorRange);
+        sensitivityRange2.addEventListener('input', updateColorRange);
 
         // Add event listener to calibrate button
         calibrateButton.addEventListener('click', calibrateCamera);
@@ -191,49 +202,63 @@
     });
 
     function updateColorRange() {
-        const colorPicker = document.getElementById('colorPicker');
-        const sensitivityRange = document.getElementById('sensitivityRange');
-        let sensitivity = parseInt(sensitivityRange.value); // 0 to 100
+        // Color 1
+        const colorPicker1 = document.getElementById('colorPicker1');
+        const sensitivityRange1 = document.getElementById('sensitivityRange1');
+        let sensitivity1 = parseInt(sensitivityRange1.value); // 0 to 100
 
-        let hexColor = colorPicker.value;
-        let hsvColor = hexToHSV(hexColor);
-        let h = hsvColor[0];
-        let s = hsvColor[1];
-        let v = hsvColor[2];
+        let hexColor1 = colorPicker1.value;
+        let hsvColor1 = hexToHSV(hexColor1);
+        let h1 = hsvColor1[0];
+        let s1 = hsvColor1[1];
+        let v1 = hsvColor1[2];
 
-        // Sensitivity adjustment
-        // At 0% sensitivity, the color range should be maximized (track all colors)
-        // At 100% sensitivity, the color range should be minimized (track only the selected color)
-        // So we can invert the sensitivity value: rangeSensitivity = 100 - sensitivity
-        let rangeSensitivity = 100 - sensitivity; // 0 to 100
+        let rangeSensitivity1 = 100 - sensitivity1;
 
-        // Define ranges based on sensitivity
-        // Maximum possible ranges for H, S, V
-        let maxHueRange = 179; // Max value for Hue in OpenCV
-        let maxSatRange = 255; // Max value for Saturation in OpenCV
-        let maxValRange = 255; // Max value for Value in OpenCV
+        let hueRange1 = (rangeSensitivity1 / 100) * 179;
+        let satRange1 = (rangeSensitivity1 / 100) * 255;
+        let valRange1 = (rangeSensitivity1 / 100) * 255;
 
-        // Calculate the ranges
-        let hueRange = (rangeSensitivity / 100) * maxHueRange;
-        let satRange = (rangeSensitivity / 100) * maxSatRange;
-        let valRange = (rangeSensitivity / 100) * maxValRange;
+        let lowerH1 = Math.max(h1 - hueRange1 / 2, 0);
+        let upperH1 = Math.min(h1 + hueRange1 / 2, 179);
 
-        // Now define lower and upper bounds
-        let lowerH = Math.max(h - hueRange / 2, 0);
-        let upperH = Math.min(h + hueRange / 2, 179);
+        let lowerS1 = Math.max(s1 - satRange1 / 2, 0);
+        let upperS1 = Math.min(s1 + satRange1 / 2, 255);
 
-        let lowerS = Math.max(s - satRange / 2, 0);
-        let upperS = Math.min(s + satRange / 2, 255);
+        let lowerV1 = Math.max(v1 - valRange1 / 2, 0);
+        let upperV1 = Math.min(v1 + valRange1 / 2, 255);
 
-        let lowerV = Math.max(v - valRange / 2, 0);
-        let upperV = Math.min(v + valRange / 2, 255);
+        lowerHSV1 = [lowerH1, lowerS1, lowerV1, 0];
+        upperHSV1 = [upperH1, upperS1, upperV1, 255];
 
-        lowerHSV = [lowerH, lowerS, lowerV, 0];
-        upperHSV = [upperH, upperS, upperV, 255];
+        // Color 2
+        const colorPicker2 = document.getElementById('colorPicker2');
+        const sensitivityRange2 = document.getElementById('sensitivityRange2');
+        let sensitivity2 = parseInt(sensitivityRange2.value); // 0 to 100
 
-        console.log("Sensitivity:", sensitivity);
-        console.log("Lower HSV:", lowerHSV);
-        console.log("Upper HSV:", upperHSV);
+        let hexColor2 = colorPicker2.value;
+        let hsvColor2 = hexToHSV(hexColor2);
+        let h2 = hsvColor2[0];
+        let s2 = hsvColor2[1];
+        let v2 = hsvColor2[2];
+
+        let rangeSensitivity2 = 100 - sensitivity2;
+
+        let hueRange2 = (rangeSensitivity2 / 100) * 179;
+        let satRange2 = (rangeSensitivity2 / 100) * 255;
+        let valRange2 = (rangeSensitivity2 / 100) * 255;
+
+        let lowerH2 = Math.max(h2 - hueRange2 / 2, 0);
+        let upperH2 = Math.min(h2 + hueRange2 / 2, 179);
+
+        let lowerS2 = Math.max(s2 - satRange2 / 2, 0);
+        let upperS2 = Math.min(s2 + satRange2 / 2, 255);
+
+        let lowerV2 = Math.max(v2 - valRange2 / 2, 0);
+        let upperV2 = Math.min(v2 + valRange2 / 2, 255);
+
+        lowerHSV2 = [lowerH2, lowerS2, lowerV2, 0];
+        upperHSV2 = [upperH2, upperS2, upperV2, 255];
     }
 
     function hexToHSV(hex) {
@@ -291,7 +316,13 @@
 
         const src = new cv.Mat(videoHeight, videoWidth, cv.CV_8UC4);
         const hsv = new cv.Mat();
-        const mask = new cv.Mat();
+
+        function getCenter(rect) {
+            return {
+                x: rect.x + rect.width / 2,
+                y: rect.y + rect.height / 2
+            };
+        }
 
         function processFrame() {
             try {
@@ -313,39 +344,110 @@
                 cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
                 cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
         
-                // Create Mats from lowerHSV and upperHSV
-                let lower = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), lowerHSV);
-                let upper = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), upperHSV);
-                cv.inRange(hsv, lower, upper, mask);
+                // Create masks for both colors
+                let lower1 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), lowerHSV1);
+                let upper1 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), upperHSV1);
+                let mask1 = new cv.Mat();
+                cv.inRange(hsv, lower1, upper1, mask1);
         
-                // Find contours
-                let contours = new cv.MatVector();
-                let hierarchy = new cv.Mat();
-                cv.findContours(mask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+                let lower2 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), lowerHSV2);
+                let upper2 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), upperHSV2);
+                let mask2 = new cv.Mat();
+                cv.inRange(hsv, lower2, upper2, mask2);
         
-                // Find the largest contour
-                let maxArea = 0;
-                let maxContour = null;
-                for (let i = 0; i < contours.size(); i++) {
-                    let cnt = contours.get(i);
+                // Find contours for both masks
+                let contours1 = new cv.MatVector();
+                let hierarchy1 = new cv.Mat();
+                cv.findContours(mask1, contours1, hierarchy1, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+        
+                let contours2 = new cv.MatVector();
+                let hierarchy2 = new cv.Mat();
+                cv.findContours(mask2, contours2, hierarchy2, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+        
+                // Prepare contours info
+                let contoursInfo1 = [];
+                let contoursInfo2 = [];
+        
+                for (let i = 0; i < contours1.size(); i++) {
+                    let cnt = contours1.get(i);
                     let area = cv.contourArea(cnt);
-                    if (area > maxArea) {
-                        if (maxContour !== null) maxContour.delete(); // delete previous maxContour
-                        maxArea = area;
-                        maxContour = cnt;
+                    if (area > 100) { // Adjust minimum area as needed
+                        let rect = cv.boundingRect(cnt);
+                        contoursInfo1.push({ contour: cnt, rect: rect });
                     } else {
-                        cnt.delete(); // delete the contour
+                        cnt.delete();
+                    }
+                }
+        
+                for (let i = 0; i < contours2.size(); i++) {
+                    let cnt = contours2.get(i);
+                    let area = cv.contourArea(cnt);
+                    if (area > 100) {
+                        let rect = cv.boundingRect(cnt);
+                        contoursInfo2.push({ contour: cnt, rect: rect });
+                    } else {
+                        cnt.delete();
+                    }
+                }
+        
+                // Find candidate pairs
+                let candidatePairs = [];
+        
+                for (let info1 of contoursInfo1) {
+                    let center1 = getCenter(info1.rect);
+                    let width1 = info1.rect.width;
+        
+                    for (let info2 of contoursInfo2) {
+                        let center2 = getCenter(info2.rect);
+                        let width2 = info2.rect.width;
+        
+                        let dx = center1.x - center2.x;
+                        let dy = center1.y - center2.y;
+                        let distanceBetweenCenters = Math.sqrt(dx * dx + dy * dy);
+        
+                        let widthSum = width1 + width2;
+        
+                        if (distanceBetweenCenters < widthSum) {
+                            // The contours are close enough
+                            let totalWidth = width1 + width2;
+                            candidatePairs.push({
+                                info1: info1,
+                                info2: info2,
+                                totalWidth: totalWidth
+                            });
+                        }
                     }
                 }
         
                 let distance = null;
         
-                if (maxContour != null) {
-                    let rect = cv.boundingRect(maxContour);
+                if (candidatePairs.length > 0) {
+                    // Select the pair with the largest sum of widths
+                    candidatePairs.sort((a, b) => b.totalWidth - a.totalWidth);
+                    let bestPair = candidatePairs[0];
+        
+                    let rect1 = bestPair.info1.rect;
+                    let rect2 = bestPair.info2.rect;
+        
+                    // Compute the bounding box around both rects
+                    let x = Math.min(rect1.x, rect2.x);
+                    let y = Math.min(rect1.y, rect2.y);
+                    let x2 = Math.max(rect1.x + rect1.width, rect2.x + rect2.width);
+                    let y2 = Math.max(rect1.y + rect1.height, rect2.y + rect2.height);
+        
+                    let boundingRect = {
+                        x: x,
+                        y: y,
+                        width: x2 - x,
+                        height: y2 - y
+                    };
+        
+                    // Draw the bounding box
+                    cv.rectangle(src, new cv.Point(boundingRect.x, boundingRect.y), new cv.Point(boundingRect.x + boundingRect.width, boundingRect.y + boundingRect.height), [0, 255, 0, 255], 2);
         
                     // Estimate distance based on bounding box width
                     if (focalLength !== null) {
-                        const observedWidth = rect.width;
+                        const observedWidth = boundingRect.width;
                         distance = (realWidth * focalLength) / observedWidth;
                         distance = parseFloat(distance.toFixed(2)); // in inches
                     } else {
@@ -353,11 +455,12 @@
                         distance = null;
                     }
         
-                    // Draw bounding box and distance text on the frame
-                    cv.rectangle(src, new cv.Point(rect.x, rect.y), new cv.Point(rect.x + rect.width, rect.y + rect.height), [0, 255, 0, 255], 2);
-                    cv.putText(src, distance !== null ? distance + " inches" : "Not calibrated", new cv.Point(rect.x, rect.y - 10), cv.FONT_HERSHEY_SIMPLEX, 0.6, [0, 255, 0, 255]);
+                    // Draw distance text
+                    cv.putText(src, distance !== null ? distance + " inches" : "Not calibrated", new cv.Point(boundingRect.x, boundingRect.y - 10), cv.FONT_HERSHEY_SIMPLEX, 0.6, [0, 255, 0, 255]);
         
-                    maxContour.delete();
+                    // Optionally, draw the individual bounding boxes
+                    cv.rectangle(src, new cv.Point(rect1.x, rect1.y), new cv.Point(rect1.x + rect1.width, rect1.y + rect1.height), [255, 0, 0, 255], 2); // Color 1 contours in blue
+                    cv.rectangle(src, new cv.Point(rect2.x, rect2.y), new cv.Point(rect2.x + rect2.width, rect2.y + rect2.height), [0, 0, 255, 255], 2); // Color 2 contours in red
                 }
         
                 // If graphing is active and distance is valid
@@ -375,10 +478,22 @@
                 cv.imshow('canvasOutput', src);
         
                 // Clean up
-                contours.delete();
-                hierarchy.delete();
-                lower.delete();
-                upper.delete();
+                for (let info of contoursInfo1) {
+                    info.contour.delete();
+                }
+                for (let info of contoursInfo2) {
+                    info.contour.delete();
+                }
+                contours1.delete();
+                contours2.delete();
+                hierarchy1.delete();
+                hierarchy2.delete();
+                lower1.delete();
+                upper1.delete();
+                mask1.delete();
+                lower2.delete();
+                upper2.delete();
+                mask2.delete();
         
                 // Schedule the next frame
                 requestAnimationFrame(processFrame);
@@ -417,7 +532,6 @@
 
         const src = new cv.Mat(videoHeight, videoWidth, cv.CV_8UC4);
         const hsv = new cv.Mat();
-        const mask = new cv.Mat();
 
         // Draw the video frame to the offscreen canvas
         ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
@@ -428,52 +542,140 @@
         cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
         cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
 
-        // Create Mats from lowerHSV and upperHSV
-        let lower = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), lowerHSV);
-        let upper = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), upperHSV);
-        cv.inRange(hsv, lower, upper, mask);
+        // Create masks for both colors
+        let lower1 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), lowerHSV1);
+        let upper1 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), upperHSV1);
+        let mask1 = new cv.Mat();
+        cv.inRange(hsv, lower1, upper1, mask1);
 
-        // Find contours
-        let contours = new cv.MatVector();
-        let hierarchy = new cv.Mat();
-        cv.findContours(mask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+        let lower2 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), lowerHSV2);
+        let upper2 = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), upperHSV2);
+        let mask2 = new cv.Mat();
+        cv.inRange(hsv, lower2, upper2, mask2);
 
-        // Find the largest contour
-        let maxArea = 0;
-        let maxContour = null;
-        for (let i = 0; i < contours.size(); i++) {
-            let cnt = contours.get(i);
+        // Find contours for both masks
+        let contours1 = new cv.MatVector();
+        let hierarchy1 = new cv.Mat();
+        cv.findContours(mask1, contours1, hierarchy1, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+        let contours2 = new cv.MatVector();
+        let hierarchy2 = new cv.Mat();
+        cv.findContours(mask2, contours2, hierarchy2, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+        // Prepare contours info
+        let contoursInfo1 = [];
+        let contoursInfo2 = [];
+
+        for (let i = 0; i < contours1.size(); i++) {
+            let cnt = contours1.get(i);
             let area = cv.contourArea(cnt);
-            if (area > maxArea) {
-                if (maxContour !== null) maxContour.delete(); // delete previous maxContour
-                maxArea = area;
-                maxContour = cnt;
+            if (area > 100) {
+                let rect = cv.boundingRect(cnt);
+                contoursInfo1.push({ contour: cnt, rect: rect });
             } else {
-                cnt.delete(); // delete the contour
+                cnt.delete();
             }
         }
 
-        if (maxContour != null) {
-            let rect = cv.boundingRect(maxContour);
-            const observedWidth = rect.width;
+        for (let i = 0; i < contours2.size(); i++) {
+            let cnt = contours2.get(i);
+            let area = cv.contourArea(cnt);
+            if (area > 100) {
+                let rect = cv.boundingRect(cnt);
+                contoursInfo2.push({ contour: cnt, rect: rect });
+            } else {
+                cnt.delete();
+            }
+        }
+
+        // Find candidate pairs
+        let candidatePairs = [];
+
+        for (let info1 of contoursInfo1) {
+            let center1 = getCenter(info1.rect);
+            let width1 = info1.rect.width;
+
+            for (let info2 of contoursInfo2) {
+                let center2 = getCenter(info2.rect);
+                let width2 = info2.rect.width;
+
+                let dx = center1.x - center2.x;
+                let dy = center1.y - center2.y;
+                let distanceBetweenCenters = Math.sqrt(dx * dx + dy * dy);
+
+                let widthSum = width1 + width2;
+
+                if (distanceBetweenCenters < widthSum) {
+                    // The contours are close enough
+                    let totalWidth = width1 + width2;
+                    candidatePairs.push({
+                        info1: info1,
+                        info2: info2,
+                        totalWidth: totalWidth
+                    });
+                }
+            }
+        }
+
+        if (candidatePairs.length > 0) {
+            // Select the pair with the largest sum of widths
+            candidatePairs.sort((a, b) => b.totalWidth - a.totalWidth);
+            let bestPair = candidatePairs[0];
+
+            let rect1 = bestPair.info1.rect;
+            let rect2 = bestPair.info2.rect;
+
+            // Compute the bounding box around both rects
+            let x = Math.min(rect1.x, rect2.x);
+            let y = Math.min(rect1.y, rect2.y);
+            let x2 = Math.max(rect1.x + rect1.width, rect2.x + rect2.width);
+            let y2 = Math.max(rect1.y + rect1.height, rect2.y + rect2.height);
+
+            let boundingRect = {
+                x: x,
+                y: y,
+                width: x2 - x,
+                height: y2 - y
+            };
+
+            const observedWidth = boundingRect.width;
 
             // Calculate focal length
             focalLength = (observedWidth * knownDistance) / realWidth;
             alert("Calibration successful!");
 
-            maxContour.delete();
+            // Clean up
+            for (let info of contoursInfo1) {
+                info.contour.delete();
+            }
+            for (let info of contoursInfo2) {
+                info.contour.delete();
+            }
         } else {
             alert("No object detected during calibration. Please make sure the object is visible and try again.");
+
+            // Clean up
+            for (let info of contoursInfo1) {
+                info.contour.delete();
+            }
+            for (let info of contoursInfo2) {
+                info.contour.delete();
+            }
         }
 
         // Clean up
         src.delete();
         hsv.delete();
-        mask.delete();
-        contours.delete();
-        hierarchy.delete();
-        lower.delete();
-        upper.delete();
+        contours1.delete();
+        contours2.delete();
+        hierarchy1.delete();
+        hierarchy2.delete();
+        lower1.delete();
+        upper1.delete();
+        mask1.delete();
+        lower2.delete();
+        upper2.delete();
+        mask2.delete();
     }
 
     function initializeChart() {
