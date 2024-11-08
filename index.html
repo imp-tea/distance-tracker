@@ -20,11 +20,11 @@
         .left-side {
             border-right: 1px solid #ccc;
         }
-        .controls, .calibration-controls {
+        .calibration-controls {
             margin-top: 10px;
             margin-bottom: 10px;
         }
-        .controls label, .calibration-controls label {
+        .calibration-controls label {
             margin-right: 5px;
         }
         video, canvas#canvasOutput {
@@ -51,15 +51,6 @@
         }
         .graph-buttons button {
             margin-right: 5px;
-        }
-        .controls label {
-            display: inline-block;
-            margin-right: 5px;
-        }
-        .controls input[type="color"],
-        .controls input[type="range"] {
-            vertical-align: middle;
-            margin-right: 10px;
         }
     </style>
     <!-- Load OpenCV.js from CDN with defer attribute -->
@@ -98,13 +89,6 @@
                 <button id="clearGraphButton">Clear Graph</button>
             </div>
         </div>
-         <!-- Controls below the graph -->
-        <div class="controls">
-            <label for="colorPicker">Select Color:</label>
-            <input type="color" id="colorPicker" name="colorPicker" value="#7ABF36">
-            <label for="sensitivityRange">Sensitivity:</label>
-            <input type="range" id="sensitivityRange" name="sensitivityRange" min="0" max="100" value="50">
-        </div>
     </div>
 </div>
 
@@ -114,8 +98,11 @@
     let videoReady = false;
     let openCVReady = false;
 
-    let lowerHSV = [40, 150, 150, 0]; // Initial lower HSV range
-    let upperHSV = [80, 255, 255, 255]; // Initial upper HSV range
+    let video;
+    let canvasOutput;
+    let canvasFrame;
+    let ctx;
+    let src;
 
     // Calibration variables
     let knownDistance = 24; // default value in inches
@@ -143,9 +130,7 @@
     // DOMContentLoaded event
     document.addEventListener('DOMContentLoaded', function() {
         console.log("DOM Content loaded...");
-        const video = document.getElementById('videoElement');
-        const colorPicker = document.getElementById('colorPicker');
-        const sensitivityRange = document.getElementById('sensitivityRange');
+        video = document.getElementById('videoElement');
         const calibrateButton = document.getElementById('calibrateButton');
         const beginGraphingButton = document.getElementById('beginGraphingButton');
         const clearGraphButton = document.getElementById('clearGraphButton');
@@ -172,12 +157,6 @@
         // Check OpenCV initialization
         checkOpenCVReady();
 
-        // Add event listener to color picker
-        colorPicker.addEventListener('input', updateColorRange);
-
-        // Add event listener to sensitivity slider
-        sensitivityRange.addEventListener('input', updateColorRange);
-
         // Add event listener to calibrate button
         calibrateButton.addEventListener('click', calibrateCamera);
 
@@ -185,99 +164,15 @@
         beginGraphingButton.addEventListener('click', beginGraphing);
         clearGraphButton.addEventListener('click', clearGraph);
 
-        // Initialize color range and chart
-        updateColorRange();
+        // Initialize chart
         initializeChart();
     });
 
-    function updateColorRange() {
-        const colorPicker = document.getElementById('colorPicker');
-        const sensitivityRange = document.getElementById('sensitivityRange');
-        let sensitivity = parseInt(sensitivityRange.value); // 0 to 100
-
-        let hexColor = colorPicker.value;
-        let hsvColor = hexToHSV(hexColor);
-        let h = hsvColor[0];
-        let s = hsvColor[1];
-        let v = hsvColor[2];
-
-        // Sensitivity adjustment
-        // At 0% sensitivity, the color range should be maximized (track all colors)
-        // At 100% sensitivity, the color range should be minimized (track only the selected color)
-        // So we can invert the sensitivity value: rangeSensitivity = 100 - sensitivity
-        let rangeSensitivity = 100 - sensitivity; // 0 to 100
-
-        // Define ranges based on sensitivity
-        // Maximum possible ranges for H, S, V
-        let maxHueRange = 179; // Max value for Hue in OpenCV
-        let maxSatRange = 255; // Max value for Saturation in OpenCV
-        let maxValRange = 255; // Max value for Value in OpenCV
-
-        // Calculate the ranges
-        let hueRange = (rangeSensitivity / 100) * maxHueRange;
-        let satRange = (rangeSensitivity / 100) * maxSatRange;
-        let valRange = (rangeSensitivity / 100) * maxValRange;
-
-        // Now define lower and upper bounds
-        let lowerH = Math.max(h - hueRange / 2, 0);
-        let upperH = Math.min(h + hueRange / 2, 179);
-
-        let lowerS = Math.max(s - satRange / 2, 0);
-        let upperS = Math.min(s + satRange / 2, 255);
-
-        let lowerV = Math.max(v - valRange / 2, 0);
-        let upperV = Math.min(v + valRange / 2, 255);
-
-        lowerHSV = [lowerH, lowerS, lowerV, 0];
-        upperHSV = [upperH, upperS, upperV, 255];
-
-        console.log("Sensitivity:", sensitivity);
-        console.log("Lower HSV:", lowerHSV);
-        console.log("Upper HSV:", upperHSV);
-    }
-
-    function hexToHSV(hex) {
-        // Convert hex to RGB first
-        let r = parseInt(hex.substr(1,2),16);
-        let g = parseInt(hex.substr(3,2),16);
-        let b = parseInt(hex.substr(5,2),16);
-
-        // Convert RGB to HSV
-        let hsv = rgbToHSV(r, g, b);
-        return hsv;
-    }
-
-    function rgbToHSV(r, g, b) {
-        r /= 255;
-        g /= 255;
-        b /= 255;
-
-        let max = Math.max(r, g, b), min = Math.min(r, g, b);
-        let h, s, v = max;
-
-        let d = max - min;
-        s = max == 0 ? 0 : d / max;
-
-        if(max == min){
-            h = 0; // achromatic
-        } else {
-            switch(max){
-                case r: h = ((g - b) / d + (g < b ? 6 : 0)); break;
-                case g: h = ((b - r) / d + 2); break;
-                case b: h = ((r - g) / d + 4); break;
-            }
-            h /= 6;
-        }
-
-        return [h * 179, s * 255, v * 255]; // OpenCV uses H ranges from 0 to 179, S and V from 0 to 255
-    }
-
     function startProcessing() {
-        const video = document.getElementById('videoElement');
-        const canvasOutput = document.getElementById('canvasOutput');
-        const canvasFrame = document.createElement('canvas');
+        canvasOutput = document.getElementById('canvasOutput');
+        canvasFrame = document.createElement('canvas');
         // Using willReadFrequently attribute for better performance
-        const ctx = canvasFrame.getContext('2d', { willReadFrequently: true });
+        ctx = canvasFrame.getContext('2d', { willReadFrequently: true });
 
         // Set canvas sizes to match video dimensions
         const videoWidth = video.videoWidth;
@@ -289,110 +184,93 @@
         canvasFrame.width = videoWidth;
         canvasFrame.height = videoHeight;
 
-        const src = new cv.Mat(videoHeight, videoWidth, cv.CV_8UC4);
-        const hsv = new cv.Mat();
-        const mask = new cv.Mat();
-
-        function processFrame() {
-            try {
-                // Clear the previous frame and apply the horizontal flip
-                ctx.save();  // Save the current context state
-                ctx.translate(videoWidth, 0); // Move the context to the right edge of the canvas
-                ctx.scale(-1, 1); // Flip horizontally by scaling x by -1
-        
-                // Draw the video frame to the offscreen canvas (mirrored)
-                ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
-        
-                // Restore the context to its original state so any overlays aren't mirrored
-                ctx.restore();
-        
-                let imageData = ctx.getImageData(0, 0, videoWidth, videoHeight);
-                src.data.set(imageData.data);
-        
-                // Convert to HSV color space
-                cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
-                cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
-        
-                // Create Mats from lowerHSV and upperHSV
-                let lower = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), lowerHSV);
-                let upper = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), upperHSV);
-                cv.inRange(hsv, lower, upper, mask);
-        
-                // Find contours
-                let contours = new cv.MatVector();
-                let hierarchy = new cv.Mat();
-                cv.findContours(mask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-        
-                // Find the largest contour
-                let maxArea = 0;
-                let maxContour = null;
-                for (let i = 0; i < contours.size(); i++) {
-                    let cnt = contours.get(i);
-                    let area = cv.contourArea(cnt);
-                    if (area > maxArea) {
-                        if (maxContour !== null) maxContour.delete(); // delete previous maxContour
-                        maxArea = area;
-                        maxContour = cnt;
-                    } else {
-                        cnt.delete(); // delete the contour
-                    }
-                }
-        
-                let distance = null;
-        
-                if (maxContour != null) {
-                    let rect = cv.boundingRect(maxContour);
-        
-                    // Estimate distance based on bounding box width
-                    if (focalLength !== null) {
-                        const observedWidth = rect.width;
-                        distance = (realWidth * focalLength) / observedWidth;
-                        distance = parseFloat(distance.toFixed(2)); // in inches
-                    } else {
-                        // If not calibrated, display message
-                        distance = null;
-                    }
-        
-                    // Draw bounding box and distance text on the frame
-                    cv.rectangle(src, new cv.Point(rect.x, rect.y), new cv.Point(rect.x + rect.width, rect.y + rect.height), [0, 255, 0, 255], 2);
-                    cv.putText(src, distance !== null ? distance + " inches" : "Not calibrated", new cv.Point(rect.x, rect.y - 10), cv.FONT_HERSHEY_SIMPLEX, 0.6, [0, 255, 0, 255]);
-        
-                    maxContour.delete();
-                }
-        
-                // If graphing is active and distance is valid
-                if (graphing && distance !== null) {
-                    let currentTime = (Date.now() - startTime) / 1000; // in seconds
-                    let dataPoint = {
-                        x: parseFloat(currentTime.toFixed(2)),
-                        y: distance
-                    };
-                    chart.data.datasets[0].data.push(dataPoint);
-                    chart.update();
-                }
-        
-                // Show the processed frame
-                cv.imshow('canvasOutput', src);
-        
-                // Clean up
-                contours.delete();
-                hierarchy.delete();
-                lower.delete();
-                upper.delete();
-        
-                // Schedule the next frame
-                requestAnimationFrame(processFrame);
-            } catch (err) {
-                console.error("Error in processing frame:", err);
-            }
-        }
+        src = new cv.Mat(videoHeight, videoWidth, cv.CV_8UC4);
 
         // Start processing frames
         requestAnimationFrame(processFrame);
     }
 
+    function processFrame() {
+        try {
+            const videoWidth = video.videoWidth;
+            const videoHeight = video.videoHeight;
+
+            // Flip and draw the video frame
+            ctx.save();
+            ctx.translate(videoWidth, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
+            ctx.restore();
+
+            // Get image data and set it to the src Mat
+            let imageData = ctx.getImageData(0, 0, videoWidth, videoHeight);
+            src.data.set(imageData.data);
+
+            // Initialize the QR code detector
+            let qrDecoder = new cv.QRCodeDetector();
+
+            // Variables to store the detected points
+            let points = new cv.Mat();
+
+            // Detect the QR code in the frame
+            let result = qrDecoder.detect(src, points);
+
+            let distance = null;
+
+            if (result) {
+                // Get the corner points of the QR code
+                let cornerPoints = [];
+                for (let i = 0; i < 4; i++) {
+                    cornerPoints.push(new cv.Point(points.data32F[i * 2], points.data32F[i * 2 + 1]));
+                }
+
+                // Draw the boundary of the QR code
+                for (let i = 0; i < 4; i++) {
+                    cv.line(src, cornerPoints[i], cornerPoints[(i + 1) % 4], [255, 0, 0, 255], 3);
+                }
+
+                // Calculate the observed width of the QR code (distance between first two points)
+                let observedWidth = Math.hypot(
+                    cornerPoints[0].x - cornerPoints[1].x,
+                    cornerPoints[0].y - cornerPoints[1].y
+                );
+
+                // Estimate the distance using the focal length
+                if (focalLength !== null) {
+                    distance = (realWidth * focalLength) / observedWidth;
+                    distance = parseFloat(distance.toFixed(2)); // in inches
+                }
+
+                // Display the distance on the frame
+                cv.putText(src, distance !== null ? distance + " inches" : "Not calibrated", new cv.Point(cornerPoints[0].x, cornerPoints[0].y - 10), cv.FONT_HERSHEY_SIMPLEX, 0.6, [0, 255, 0, 255]);
+            }
+
+            // If graphing is active and distance is valid
+            if (graphing && distance !== null) {
+                let currentTime = (Date.now() - startTime) / 1000; // in seconds
+                let dataPoint = {
+                    x: parseFloat(currentTime.toFixed(2)),
+                    y: distance
+                };
+                chart.data.datasets[0].data.push(dataPoint);
+                chart.update();
+            }
+
+            // Display the processed frame
+            cv.imshow('canvasOutput', src);
+
+            // Clean up
+            qrDecoder.delete();
+            points.delete();
+
+            // Schedule the next frame
+            requestAnimationFrame(processFrame);
+        } catch (err) {
+            console.error("Error in processing frame:", err);
+        }
+    }
+
     function calibrateCamera() {
-        const video = document.getElementById('videoElement');
         const canvasFrame = document.createElement('canvas');
         const ctx = canvasFrame.getContext('2d', { willReadFrequently: true });
 
@@ -408,7 +286,7 @@
             return;
         }
 
-        // Capture current frame and process
+        // Capture the current frame
         const videoWidth = video.videoWidth;
         const videoHeight = video.videoHeight;
 
@@ -416,64 +294,42 @@
         canvasFrame.height = videoHeight;
 
         const src = new cv.Mat(videoHeight, videoWidth, cv.CV_8UC4);
-        const hsv = new cv.Mat();
-        const mask = new cv.Mat();
 
         // Draw the video frame to the offscreen canvas
         ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
         let imageData = ctx.getImageData(0, 0, videoWidth, videoHeight);
         src.data.set(imageData.data);
 
-        // Convert to HSV color space
-        cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
-        cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
+        // Initialize the QR code detector
+        let qrDecoder = new cv.QRCodeDetector();
+        let points = new cv.Mat();
 
-        // Create Mats from lowerHSV and upperHSV
-        let lower = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), lowerHSV);
-        let upper = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), upperHSV);
-        cv.inRange(hsv, lower, upper, mask);
+        let result = qrDecoder.detect(src, points);
 
-        // Find contours
-        let contours = new cv.MatVector();
-        let hierarchy = new cv.Mat();
-        cv.findContours(mask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
-        // Find the largest contour
-        let maxArea = 0;
-        let maxContour = null;
-        for (let i = 0; i < contours.size(); i++) {
-            let cnt = contours.get(i);
-            let area = cv.contourArea(cnt);
-            if (area > maxArea) {
-                if (maxContour !== null) maxContour.delete(); // delete previous maxContour
-                maxArea = area;
-                maxContour = cnt;
-            } else {
-                cnt.delete(); // delete the contour
+        if (result) {
+            // Get the corner points of the QR code
+            let cornerPoints = [];
+            for (let i = 0; i < 4; i++) {
+                cornerPoints.push(new cv.Point(points.data32F[i * 2], points.data32F[i * 2 + 1]));
             }
-        }
 
-        if (maxContour != null) {
-            let rect = cv.boundingRect(maxContour);
-            const observedWidth = rect.width;
+            // Calculate the observed width of the QR code
+            let observedWidth = Math.hypot(
+                cornerPoints[0].x - cornerPoints[1].x,
+                cornerPoints[0].y - cornerPoints[1].y
+            );
 
-            // Calculate focal length
+            // Calculate the focal length
             focalLength = (observedWidth * knownDistance) / realWidth;
             alert("Calibration successful!");
-
-            maxContour.delete();
         } else {
-            alert("No object detected during calibration. Please make sure the object is visible and try again.");
+            alert("No QR code detected during calibration. Please make sure the QR code is visible and try again.");
         }
 
         // Clean up
+        qrDecoder.delete();
+        points.delete();
         src.delete();
-        hsv.delete();
-        mask.delete();
-        contours.delete();
-        hierarchy.delete();
-        lower.delete();
-        upper.delete();
     }
 
     function initializeChart() {
@@ -524,7 +380,7 @@
         // Add event listener for double-clicks on data points
         chart.canvas.addEventListener('dblclick', function(event) {
             const points = chart.getElementsAtEventForMode(event, 'nearest', { intersect: true }, false);
-        
+
             if (points.length) {
                 const pointIndex = points[0].index;
                 // Remove the data point
