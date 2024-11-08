@@ -135,7 +135,14 @@
     let chart; // Chart.js chart instance
     let graphing = false; // Flag to indicate if graphing is active
     let startTime = null; // Variable to track the start time of graphing
-
+    
+    // Helper function to get the center of a rectangle
+    function getCenter(rect) {
+        return {
+            x: rect.x + rect.width / 2,
+            y: rect.y + rect.height / 2
+        };
+    }
     // Poll every 100ms to check if OpenCV is loaded
     function checkOpenCVReady() {
         if (cv && cv.Mat) {
@@ -316,13 +323,6 @@
 
         const src = new cv.Mat(videoHeight, videoWidth, cv.CV_8UC4);
         const hsv = new cv.Mat();
-
-        function getCenter(rect) {
-            return {
-                x: rect.x + rect.width / 2,
-                y: rect.y + rect.height / 2
-            };
-        }
 
         function processFrame() {
             try {
