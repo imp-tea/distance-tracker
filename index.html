@@ -76,14 +76,6 @@
         <!-- Canvas element to show the processed video with distance overlay -->
         <canvas id="canvasOutput"></canvas>
 
-        <!-- Controls below the canvas -->
-        <div class="controls">
-            <label for="colorPicker">Select Color:</label>
-            <input type="color" id="colorPicker" name="colorPicker" value="#7ABF36">
-            <label for="sensitivityRange">Sensitivity:</label>
-            <input type="range" id="sensitivityRange" name="sensitivityRange" min="0" max="100" value="50">
-        </div>
-
         <div class="calibration-controls">
             <label for="distanceInput">Distance from Camera (inches):</label>
             <input type="number" id="distanceInput" name="distanceInput" value="24">
@@ -105,6 +97,13 @@
                 <button id="beginGraphingButton">Begin Graphing</button>
                 <button id="clearGraphButton">Clear Graph</button>
             </div>
+        </div>
+         <!-- Controls below the graph -->
+        <div class="controls">
+            <label for="colorPicker">Select Color:</label>
+            <input type="color" id="colorPicker" name="colorPicker" value="#7ABF36">
+            <label for="sensitivityRange">Sensitivity:</label>
+            <input type="range" id="sensitivityRange" name="sensitivityRange" min="0" max="100" value="50">
         </div>
     </div>
 </div>
