@@ -296,25 +296,34 @@
 
         function processFrame() {
             try {
-                // Draw the video frame to the offscreen canvas
+                // Clear the previous frame and apply the horizontal flip
+                ctx.save();  // Save the current context state
+                ctx.translate(videoWidth, 0); // Move the context to the right edge of the canvas
+                ctx.scale(-1, 1); // Flip horizontally by scaling x by -1
+        
+                // Draw the video frame to the offscreen canvas (mirrored)
                 ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
+        
+                // Restore the context to its original state so any overlays aren't mirrored
+                ctx.restore();
+        
                 let imageData = ctx.getImageData(0, 0, videoWidth, videoHeight);
                 src.data.set(imageData.data);
-
+        
                 // Convert to HSV color space
                 cv.cvtColor(src, hsv, cv.COLOR_RGBA2RGB);
                 cv.cvtColor(hsv, hsv, cv.COLOR_RGB2HSV);
-
+        
                 // Create Mats from lowerHSV and upperHSV
                 let lower = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), lowerHSV);
                 let upper = new cv.Mat(hsv.rows, hsv.cols, hsv.type(), upperHSV);
                 cv.inRange(hsv, lower, upper, mask);
-
+        
                 // Find contours
                 let contours = new cv.MatVector();
                 let hierarchy = new cv.Mat();
                 cv.findContours(mask, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-
+        
                 // Find the largest contour
                 let maxArea = 0;
                 let maxContour = null;
@@ -329,12 +338,12 @@
                         cnt.delete(); // delete the contour
                     }
                 }
-
+        
                 let distance = null;
-
+        
                 if (maxContour != null) {
                     let rect = cv.boundingRect(maxContour);
-
+        
                     // Estimate distance based on bounding box width
                     if (focalLength !== null) {
                         const observedWidth = rect.width;
@@ -344,14 +353,14 @@
                         // If not calibrated, display message
                         distance = null;
                     }
-
+        
                     // Draw bounding box and distance text on the frame
                     cv.rectangle(src, new cv.Point(rect.x, rect.y), new cv.Point(rect.x + rect.width, rect.y + rect.height), [0, 255, 0, 255], 2);
                     cv.putText(src, distance !== null ? distance + " inches" : "Not calibrated", new cv.Point(rect.x, rect.y - 10), cv.FONT_HERSHEY_SIMPLEX, 0.6, [0, 255, 0, 255]);
-
+        
                     maxContour.delete();
                 }
-
+        
                 // If graphing is active and distance is valid
                 if (graphing && distance !== null) {
                     let currentTime = (Date.now() - startTime) / 1000; // in seconds
@@ -362,16 +371,16 @@
                     chart.data.datasets[0].data.push(dataPoint);
                     chart.update();
                 }
-
+        
                 // Show the processed frame
                 cv.imshow('canvasOutput', src);
-
+        
                 // Clean up
                 contours.delete();
                 hierarchy.delete();
                 lower.delete();
                 upper.delete();
-
+        
                 // Schedule the next frame
                 requestAnimationFrame(processFrame);
             } catch (err) {
