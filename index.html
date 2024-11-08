@@ -274,20 +274,8 @@
         if (aspectRatio < 0.8 || aspectRatio > 1.2) return false;
 
         // Approximate the contour to reduce the number of vertices
-        let approx = new cv.Mat();
-        cv.approxPolyDP(contour, approx, 0.02 * cv.arcLength(contour, true), true);
-
-        // Check for convexity
-        if (!cv.isContourConvex(approx)) {
-            approx.delete();
-            return false;
-        }
-
-        // Check if the contour has enough vertices (a cross might be represented with more vertices)
-        if (approx.rows < 12) { // Adjust this number based on your cross pattern
-            approx.delete();
-            return false;
-        }
+        //let approx = new cv.Mat();
+        //cv.approxPolyDP(contour, approx, 0.02 * cv.arcLength(contour, true), true);
 
         // Additional checks can be added here to verify the cross shape
 
