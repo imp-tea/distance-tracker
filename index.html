@@ -53,8 +53,8 @@
             margin-right: 5px;
         }
     </style>
-    <!-- Load OpenCV.js from CDN with defer attribute -->
-    <script defer src="https://docs.opencv.org/3.4.0/opencv.js"></script>
+    <!-- Load OpenCV.js full build with all modules -->
+    <script async src="https://docs.opencv.org/4.5.5/opencv.js" type="text/javascript"></script>
     <!-- Load Chart.js from CDN -->
     <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
@@ -106,7 +106,7 @@
 
     // Calibration variables
     let knownDistance = 24; // default value in inches
-    let realWidth = 4; // default value in inches
+    let realWidth = 6; // default value in inches
     let focalLength = null; // will be calculated during calibration
 
     // Graphing variables
