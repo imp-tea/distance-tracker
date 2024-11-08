@@ -53,8 +53,8 @@
             margin-right: 5px;
         }
     </style>
-    <!-- Load OpenCV.js full build with all modules -->
-    <script src="https://docs.opencv.org/4.5.5/opencv.js" type="text/javascript" onload="onOpenCvReady();"></script>
+    <!-- Load OpenCV.js version 4.10.0 from CDN with defer attribute -->
+    <script defer src="https://docs.opencv.org/4.10.0/opencv.js"></script>
     <!-- Load Chart.js from CDN -->
     <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
@@ -71,8 +71,8 @@
             <label for="distanceInput">Distance from Camera (inches):</label>
             <input type="number" id="distanceInput" name="distanceInput" value="24">
             <br>
-            <label for="widthInput">Width of Object (inches):</label>
-            <input type="number" id="widthInput" name="widthInput" value="6">
+            <label for="widthInput">Width of QR Code (inches):</label>
+            <input type="number" id="widthInput" name="widthInput" value="2">
             <br>
             <button id="calibrateButton">Calibrate!</button>
         </div>
@@ -98,15 +98,9 @@
     let videoReady = false;
     let openCVReady = false;
 
-    let video;
-    let canvasOutput;
-    let canvasFrame;
-    let ctx;
-    let src;
-
     // Calibration variables
     let knownDistance = 24; // default value in inches
-    let realWidth = 6; // default value in inches
+    let realWidth = 2; // default value in inches (width of QR code)
     let focalLength = null; // will be calculated during calibration
 
     // Graphing variables
@@ -114,19 +108,23 @@
     let graphing = false; // Flag to indicate if graphing is active
     let startTime = null; // Variable to track the start time of graphing
 
-    // Function called when OpenCV.js is ready
-    function onOpenCvReady() {
-        console.log("OpenCV.js is ready.");
-        openCVReady = true;
-        if (videoReady) {
-            startProcessing();
+    // Poll every 100ms to check if OpenCV is loaded
+    function checkOpenCVReady() {
+        if (cv && cv.Mat) {
+            console.log("OpenCV.js is ready.");
+            openCVReady = true;
+            if (videoReady) {
+                startProcessing();
+            }
+        } else {
+            setTimeout(checkOpenCVReady, 100); // Retry every 100ms
         }
     }
 
     // DOMContentLoaded event
     document.addEventListener('DOMContentLoaded', function() {
         console.log("DOM Content loaded...");
-        video = document.getElementById('videoElement');
+        const video = document.getElementById('videoElement');
         const calibrateButton = document.getElementById('calibrateButton');
         const beginGraphingButton = document.getElementById('beginGraphingButton');
         const clearGraphButton = document.getElementById('clearGraphButton');
@@ -150,6 +148,9 @@
             }
         });
 
+        // Check OpenCV initialization
+        checkOpenCVReady();
+
         // Add event listener to calibrate button
         calibrateButton.addEventListener('click', calibrateCamera);
 
@@ -162,10 +163,11 @@
     });
 
     function startProcessing() {
-        canvasOutput = document.getElementById('canvasOutput');
-        canvasFrame = document.createElement('canvas');
+        const video = document.getElementById('videoElement');
+        const canvasOutput = document.getElementById('canvasOutput');
+        const canvasFrame = document.createElement('canvas');
         // Using willReadFrequently attribute for better performance
-        ctx = canvasFrame.getContext('2d', { willReadFrequently: true });
+        const ctx = canvasFrame.getContext('2d', { willReadFrequently: true });
 
         // Set canvas sizes to match video dimensions
         const videoWidth = video.videoWidth;
@@ -177,93 +179,93 @@
         canvasFrame.width = videoWidth;
         canvasFrame.height = videoHeight;
 
-        src = new cv.Mat(videoHeight, videoWidth, cv.CV_8UC4);
+        const src = new cv.Mat(videoHeight, videoWidth, cv.CV_8UC4);
+
+        // Create QRCodeDetector
+        let qrDecoder = new cv.QRCodeDetector();
+
+        function processFrame() {
+            try {
+                // Clear the previous frame and apply the horizontal flip
+                ctx.save();  // Save the current context state
+                ctx.translate(videoWidth, 0); // Move the context to the right edge of the canvas
+                ctx.scale(-1, 1); // Flip horizontally by scaling x by -1
+
+                // Draw the video frame to the offscreen canvas (mirrored)
+                ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
+
+                // Restore the context to its original state so any overlays aren't mirrored
+                ctx.restore();
+
+                let imageData = ctx.getImageData(0, 0, videoWidth, videoHeight);
+                src.data.set(imageData.data);
+
+                // Detect QR code
+                let points = new cv.Mat();
+                let qrFound = qrDecoder.detect(src, points);
+
+                let distance = null;
+
+                if (qrFound) {
+                    // Draw the detected QR code bounding box on the image
+                    let corner1 = new cv.Point(points.data32F[0], points.data32F[1]);
+                    let corner2 = new cv.Point(points.data32F[2], points.data32F[3]);
+                    let corner3 = new cv.Point(points.data32F[4], points.data32F[5]);
+                    let corner4 = new cv.Point(points.data32F[6], points.data32F[7]);
+
+                    // Draw lines between the corners
+                    cv.line(src, corner1, corner2, [255, 0, 0, 255], 2);
+                    cv.line(src, corner2, corner3, [255, 0, 0, 255], 2);
+                    cv.line(src, corner3, corner4, [255, 0, 0, 255], 2);
+                    cv.line(src, corner4, corner1, [255, 0, 0, 255], 2);
+
+                    // Calculate bounding rectangle
+                    let rect = cv.boundingRect(points);
+
+                    // Estimate distance based on bounding box width
+                    if (focalLength !== null) {
+                        const observedWidth = rect.width;
+                        distance = (realWidth * focalLength) / observedWidth;
+                        distance = parseFloat(distance.toFixed(2)); // in inches
+                    } else {
+                        // If not calibrated, display message
+                        distance = null;
+                    }
+
+                    // Draw distance text on the frame
+                    cv.putText(src, distance !== null ? distance + " inches" : "Not calibrated", new cv.Point(rect.x, rect.y - 10), cv.FONT_HERSHEY_SIMPLEX, 0.6, [0, 255, 0, 255]);
+                }
+
+                // If graphing is active and distance is valid
+                if (graphing && distance !== null) {
+                    let currentTime = (Date.now() - startTime) / 1000; // in seconds
+                    let dataPoint = {
+                        x: parseFloat(currentTime.toFixed(2)),
+                        y: distance
+                    };
+                    chart.data.datasets[0].data.push(dataPoint);
+                    chart.update();
+                }
+
+                // Show the processed frame
+                cv.imshow('canvasOutput', src);
+
+                // Clean up
+                points.delete();
+
+                // Schedule the next frame
+                requestAnimationFrame(processFrame);
+            } catch (err) {
+                console.error("Error in processing frame:", err);
+            }
+        }
 
         // Start processing frames
         requestAnimationFrame(processFrame);
     }
 
-    function processFrame() {
-        try {
-            const videoWidth = video.videoWidth;
-            const videoHeight = video.videoHeight;
-
-            // Flip and draw the video frame
-            ctx.save();
-            ctx.translate(videoWidth, 0);
-            ctx.scale(-1, 1);
-            ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
-            ctx.restore();
-
-            // Get image data and set it to the src Mat
-            let imageData = ctx.getImageData(0, 0, videoWidth, videoHeight);
-            src.data.set(imageData.data);
-
-            // Initialize the QR code detector
-            let qrDecoder = new cv.QRCodeDetector();
-
-            // Variables to store the detected points
-            let points = new cv.Mat();
-
-            // Detect the QR code in the frame
-            let result = qrDecoder.detect(src, points);
-
-            let distance = null;
-
-            if (result) {
-                // Get the corner points of the QR code
-                let cornerPoints = [];
-                for (let i = 0; i < 4; i++) {
-                    cornerPoints.push(new cv.Point(points.data32F[i * 2], points.data32F[i * 2 + 1]));
-                }
-
-                // Draw the boundary of the QR code
-                for (let i = 0; i < 4; i++) {
-                    cv.line(src, cornerPoints[i], cornerPoints[(i + 1) % 4], [255, 0, 0, 255], 3);
-                }
-
-                // Calculate the observed width of the QR code (distance between first two points)
-                let observedWidth = Math.hypot(
-                    cornerPoints[0].x - cornerPoints[1].x,
-                    cornerPoints[0].y - cornerPoints[1].y
-                );
-
-                // Estimate the distance using the focal length
-                if (focalLength !== null) {
-                    distance = (realWidth * focalLength) / observedWidth;
-                    distance = parseFloat(distance.toFixed(2)); // in inches
-                }
-
-                // Display the distance on the frame
-                cv.putText(src, distance !== null ? distance + " inches" : "Not calibrated", new cv.Point(cornerPoints[0].x, cornerPoints[0].y - 10), cv.FONT_HERSHEY_SIMPLEX, 0.6, [0, 255, 0, 255]);
-            }
-
-            // If graphing is active and distance is valid
-            if (graphing && distance !== null) {
-                let currentTime = (Date.now() - startTime) / 1000; // in seconds
-                let dataPoint = {
-                    x: parseFloat(currentTime.toFixed(2)),
-                    y: distance
-                };
-                chart.data.datasets[0].data.push(dataPoint);
-                chart.update();
-            }
-
-            // Display the processed frame
-            cv.imshow('canvasOutput', src);
-
-            // Clean up
-            qrDecoder.delete();
-            points.delete();
-
-            // Schedule the next frame
-            requestAnimationFrame(processFrame);
-        } catch (err) {
-            console.error("Error in processing frame:", err);
-        }
-    }
-
     function calibrateCamera() {
+        const video = document.getElementById('videoElement');
         const canvasFrame = document.createElement('canvas');
         const ctx = canvasFrame.getContext('2d', { willReadFrequently: true });
 
@@ -279,7 +281,7 @@
             return;
         }
 
-        // Capture the current frame
+        // Capture current frame and process
         const videoWidth = video.videoWidth;
         const videoHeight = video.videoHeight;
 
@@ -293,36 +295,29 @@
         let imageData = ctx.getImageData(0, 0, videoWidth, videoHeight);
         src.data.set(imageData.data);
 
-        // Initialize the QR code detector
+        // Create QRCodeDetector
         let qrDecoder = new cv.QRCodeDetector();
+
+        // Detect QR code
         let points = new cv.Mat();
+        let qrFound = qrDecoder.detect(src, points);
 
-        let result = qrDecoder.detect(src, points);
+        if (qrFound) {
+            // Calculate bounding rectangle
+            let rect = cv.boundingRect(points);
+            const observedWidth = rect.width;
 
-        if (result) {
-            // Get the corner points of the QR code
-            let cornerPoints = [];
-            for (let i = 0; i < 4; i++) {
-                cornerPoints.push(new cv.Point(points.data32F[i * 2], points.data32F[i * 2 + 1]));
-            }
-
-            // Calculate the observed width of the QR code
-            let observedWidth = Math.hypot(
-                cornerPoints[0].x - cornerPoints[1].x,
-                cornerPoints[0].y - cornerPoints[1].y
-            );
-
-            // Calculate the focal length
+            // Calculate focal length
             focalLength = (observedWidth * knownDistance) / realWidth;
             alert("Calibration successful!");
+
         } else {
             alert("No QR code detected during calibration. Please make sure the QR code is visible and try again.");
         }
 
         // Clean up
-        qrDecoder.delete();
-        points.delete();
         src.delete();
+        points.delete();
     }
 
     function initializeChart() {
