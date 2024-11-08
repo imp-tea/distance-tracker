@@ -21,6 +21,7 @@
             border-right: 1px solid #ccc;
         }
         .controls, .calibration-controls {
+            margin-top: 10px;
             margin-bottom: 10px;
         }
         .controls label, .calibration-controls label {
@@ -51,6 +52,15 @@
         .graph-buttons button {
             margin-right: 5px;
         }
+        .controls label {
+            display: inline-block;
+            margin-right: 5px;
+        }
+        .controls input[type="color"],
+        .controls input[type="range"] {
+            vertical-align: middle;
+            margin-right: 10px;
+        }
     </style>
     <!-- Load OpenCV.js from CDN with defer attribute -->
     <script defer src="https://docs.opencv.org/3.4.0/opencv.js"></script>
@@ -63,9 +73,15 @@
 
 <div class="container">
     <div class="left-side">
+        <!-- Canvas element to show the processed video with distance overlay -->
+        <canvas id="canvasOutput"></canvas>
+
+        <!-- Controls below the canvas -->
         <div class="controls">
             <label for="colorPicker">Select Color:</label>
             <input type="color" id="colorPicker" name="colorPicker" value="#7ABF36">
+            <label for="sensitivityRange">Sensitivity:</label>
+            <input type="range" id="sensitivityRange" name="sensitivityRange" min="0" max="100" value="50">
         </div>
 
         <div class="calibration-controls">
@@ -76,11 +92,8 @@
             <button id="calibrateButton">Calibrate!</button>
         </div>
 
-        <!-- Video element to capture from webcam -->
+        <!-- Video element to capture from webcam (hidden) -->
         <video id="videoElement" autoplay playsinline></video>
-
-        <!-- Canvas element to show the processed video with distance overlay -->
-        <canvas id="canvasOutput"></canvas>
     </div>
 
     <div class="right-side">
@@ -111,8 +124,6 @@
     // Graphing variables
     let chart; // Chart.js chart instance
     let graphing = false; // Flag to indicate if graphing is active
-    let graphData = []; // Array to store distance data
-    let graphLabels = []; // Array to store time labels
     let startTime = null; // Variable to track the start time of graphing
 
     // Poll every 100ms to check if OpenCV is loaded
@@ -133,6 +144,7 @@
         console.log("DOM Content loaded...");
         const video = document.getElementById('videoElement');
         const colorPicker = document.getElementById('colorPicker');
+        const sensitivityRange = document.getElementById('sensitivityRange');
         const calibrateButton = document.getElementById('calibrateButton');
         const beginGraphingButton = document.getElementById('beginGraphingButton');
         const clearGraphButton = document.getElementById('clearGraphButton');
@@ -162,6 +174,9 @@
         // Add event listener to color picker
         colorPicker.addEventListener('input', updateColorRange);
 
+        // Add event listener to sensitivity slider
+        sensitivityRange.addEventListener('input', updateColorRange);
+
         // Add event listener to calibrate button
         calibrateButton.addEventListener('click', calibrateCamera);
 
@@ -176,29 +191,46 @@
 
     function updateColorRange() {
         const colorPicker = document.getElementById('colorPicker');
+        const sensitivityRange = document.getElementById('sensitivityRange');
+        let sensitivity = parseInt(sensitivityRange.value); // 0 to 100
+
         let hexColor = colorPicker.value;
         let hsvColor = hexToHSV(hexColor);
         let h = hsvColor[0];
         let s = hsvColor[1];
         let v = hsvColor[2];
 
-        // Define ranges
-        let hueRange = 10; // Adjust as needed
-        let satRange = 100; // Adjust as needed
-        let valRange = 100; // Adjust as needed
+        // Sensitivity adjustment
+        // At 0% sensitivity, the color range should be maximized (track all colors)
+        // At 100% sensitivity, the color range should be minimized (track only the selected color)
+        // So we can invert the sensitivity value: rangeSensitivity = 100 - sensitivity
+        let rangeSensitivity = 100 - sensitivity; // 0 to 100
 
-        let lowerH = Math.max(h - hueRange, 0);
-        let upperH = Math.min(h + hueRange, 179);
+        // Define ranges based on sensitivity
+        // Maximum possible ranges for H, S, V
+        let maxHueRange = 179; // Max value for Hue in OpenCV
+        let maxSatRange = 255; // Max value for Saturation in OpenCV
+        let maxValRange = 255; // Max value for Value in OpenCV
 
-        let lowerS = Math.max(s - satRange, 0);
-        let upperS = Math.min(s + satRange, 255);
+        // Calculate the ranges
+        let hueRange = (rangeSensitivity / 100) * maxHueRange;
+        let satRange = (rangeSensitivity / 100) * maxSatRange;
+        let valRange = (rangeSensitivity / 100) * maxValRange;
 
-        let lowerV = Math.max(v - valRange, 0);
-        let upperV = Math.min(v + valRange, 255);
+        // Now define lower and upper bounds
+        let lowerH = Math.max(h - hueRange / 2, 0);
+        let upperH = Math.min(h + hueRange / 2, 179);
+
+        let lowerS = Math.max(s - satRange / 2, 0);
+        let upperS = Math.min(s + satRange / 2, 255);
+
+        let lowerV = Math.max(v - valRange / 2, 0);
+        let upperV = Math.min(v + valRange / 2, 255);
 
         lowerHSV = [lowerH, lowerS, lowerV, 0];
         upperHSV = [upperH, upperS, upperV, 255];
 
+        console.log("Sensitivity:", sensitivity);
         console.log("Lower HSV:", lowerHSV);
         console.log("Upper HSV:", upperHSV);
     }
@@ -296,11 +328,12 @@
                     }
                 }
 
+                let distance = null;
+
                 if (maxContour != null) {
                     let rect = cv.boundingRect(maxContour);
 
                     // Estimate distance based on bounding box width
-                    let distance;
                     if (focalLength !== null) {
                         const observedWidth = rect.width;
                         distance = (realWidth * focalLength) / observedWidth;
@@ -315,14 +348,17 @@
                     cv.putText(src, distance !== null ? distance + " inches" : "Not calibrated", new cv.Point(rect.x, rect.y - 10), cv.FONT_HERSHEY_SIMPLEX, 0.6, [0, 255, 0, 255]);
 
                     maxContour.delete();
+                }
 
-                    // If graphing is active and distance is valid
-                    if (graphing && distance !== null) {
-                        let currentTime = (Date.now() - startTime) / 1000; // in seconds
-                        graphLabels.push(parseFloat(currentTime.toFixed(2)));
-                        graphData.push(distance);
-                        chart.update();
-                    }
+                // If graphing is active and distance is valid
+                if (graphing && distance !== null) {
+                    let currentTime = (Date.now() - startTime) / 1000; // in seconds
+                    let dataPoint = {
+                        x: parseFloat(currentTime.toFixed(2)),
+                        y: distance
+                    };
+                    chart.data.datasets[0].data.push(dataPoint);
+                    chart.update();
                 }
 
                 // Show the processed frame
@@ -435,12 +471,13 @@
         chart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: [], // Time labels
                 datasets: [{
                     label: 'Distance (inches)',
                     data: [],
                     borderColor: 'blue',
                     fill: false,
+                    pointRadius: 2,
+                    pointHoverRadius: 5
                 }]
             },
             options: {
@@ -479,10 +516,7 @@
         if (!graphing) {
             graphing = true;
             startTime = Date.now();
-            graphData = [];
-            graphLabels = [];
-            chart.data.labels = graphLabels;
-            chart.data.datasets[0].data = graphData;
+            chart.data.datasets[0].data = [];
             chart.update();
             document.getElementById('beginGraphingButton').textContent = 'Stop Graphing';
         } else {
@@ -494,10 +528,7 @@
     function clearGraph() {
         graphing = false;
         document.getElementById('beginGraphingButton').textContent = 'Begin Graphing';
-        graphData = [];
-        graphLabels = [];
-        chart.data.labels = graphLabels;
-        chart.data.datasets[0].data = graphData;
+        chart.data.datasets[0].data = [];
         chart.update();
     }
 </script>
