@@ -521,6 +521,17 @@
                 }
             }
         });
+        // Add event listener for double-clicks on data points
+        chart.canvas.addEventListener('dblclick', function(event) {
+            const points = chart.getElementsAtEventForMode(event, 'nearest', { intersect: true }, false);
+        
+            if (points.length) {
+                const pointIndex = points[0].index;
+                // Remove the data point
+                chart.data.datasets[0].data.splice(pointIndex, 1);
+                chart.update();
+            }
+        });
     }
 
     function beginGraphing() {
