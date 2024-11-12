@@ -100,12 +100,24 @@
         }
     }
 
+    async function loadFaceCascade() {
+        const faceCascade = new cv.CascadeClassifier();
+        const response = await fetch('haarcascade_frontalface_default.xml');
+        const data = await response.arrayBuffer();
+        const dataView = new Uint8Array(data);
+        cv.FS_createDataFile('/', 'haarcascade_frontalface_default.xml', dataView, true, false, false);
+        faceCascade.load('haarcascade_frontalface_default.xml');
+        return faceCascade;
+    }
+    let faceCascade;
+    
     document.addEventListener('DOMContentLoaded', function() {
         const video = document.getElementById('videoElement');
         const calibrateButton = document.getElementById('calibrateButton');
         const beginGraphingButton = document.getElementById('beginGraphingButton');
         const clearGraphButton = document.getElementById('clearGraphButton');
-
+        faceCascade = await loadFaceCascade();
+        console.log("Face cascade loaded successfully.");
         navigator.mediaDevices.getUserMedia({ video: true })
             .then(stream => {
                 video.srcObject = stream;
@@ -120,6 +132,8 @@
                 startProcessing();
             }
         });
+
+        
 
         checkOpenCVReady();
 
